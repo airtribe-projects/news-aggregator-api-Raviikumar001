@@ -6,6 +6,8 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 const normalizeEmail = (email) => (email ? email.trim().toLowerCase() : '');
 
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
 const ensureDataDir = () => {
     if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -13,6 +15,10 @@ const ensureDataDir = () => {
 };
 
 const loadUsersFromDisk = () => {
+    if (isTestEnvironment) {
+        return {};
+    }
+
     try {
         if (!fs.existsSync(USERS_FILE)) {
             return {};
@@ -32,6 +38,9 @@ const loadUsersFromDisk = () => {
 const users = new Map(Object.entries(loadUsersFromDisk()));
 
 const persistUsers = () => {
+    if (isTestEnvironment) {
+        return;
+    }
     try {
         ensureDataDir();
         const payload = Object.fromEntries(users);
