@@ -3,9 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const authRoutes = require('./routes/authRoutes');
+const preferencesRoutes = require('./routes/preferencesRoutes');
 const { authenticate } = require('./utils/authMiddleware');
-const { normalizePreferences } = require('./utils/normalizePreferences');
-const { updateUserPreferences } = require('./utils/userStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,7 +14,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 app.use(morgan('dev'));
 
-app.use('/', authRoutes);   
+app.use('/', authRoutes);
+app.use('/', preferencesRoutes);   
 
 const newsCache = new Map();
 const CACHE_TTL_MS = 60 * 1000;
@@ -68,17 +68,6 @@ app.get('/news', authenticate, async (req, res) => {
         console.error('News fetch failed', error);
         return res.status(502).json({ error: 'Unable to reach external news provider' });
     }
-});
-
-app.get('/users/preferences', authenticate, (req, res) => {
-    return res.status(200).json({ preferences: req.user.preferences });
-});
-
-app.put('/users/preferences', authenticate, (req, res) => {
-    const { preferences } = req.body;
-    const normalized = normalizePreferences(preferences);
-    const updated = updateUserPreferences(req.user.email, normalized);
-    return res.status(200).json({ preferences: updated ? updated.preferences : normalized });
 });
 
 app.use((req, res) => {
