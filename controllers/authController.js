@@ -2,15 +2,17 @@ const bcrypt = require('bcrypt');
 const { signToken } = require('../utils/jwtService');
 const { normalizePreferences } = require('../utils/normalizePreferences');
 const { findUserByEmail, saveUser } = require('../utils/userStore');
+const { validateRegistration, validateLogin } = require('../utils/validation');
 
 const SALT_ROUNDS = 10;
 
 const registerUser = async (req, res) => {
-    const { name, email, password, preferences } = req.body;
-    if (!name || !email || !password) {
-        return res.status(400).json({ error: 'Name, email, and password are required' });
+    const validation = validateRegistration(req.body);
+    if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid registration payload', details: validation.errors });
     }
 
+    const { name, email, password, preferences } = validation.value;
     if (findUserByEmail(email)) {
         return res.status(409).json({ error: 'User with that email already exists' });
     }
@@ -32,11 +34,12 @@ const registerUser = async (req, res) => {
 };
 
 const loginUser = async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required' });
+    const validation = validateLogin(req.body);
+    if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid login payload', details: validation.errors });
     }
 
+    const { email, password } = validation.value;
     const user = findUserByEmail(email);
     if (!user) {
         return res.status(401).json({ error: 'Invalid email or password' });
