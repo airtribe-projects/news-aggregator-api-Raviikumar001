@@ -50,16 +50,24 @@ const persistUsers = () => {
     }
 };
 
+const ensureUserCollections = (user = {}) => ({
+    ...user,
+    preferences: Array.isArray(user.preferences) ? user.preferences : [],
+    readArticles: Array.isArray(user.readArticles) ? user.readArticles : [],
+    favoriteArticles: Array.isArray(user.favoriteArticles) ? user.favoriteArticles : []
+});
+
 const findUserByEmail = (email) => {
     const normalized = normalizeEmail(email);
     if (!normalized) return null;
-    return users.get(normalized) || null;
+    const stored = users.get(normalized);
+    return stored ? ensureUserCollections(stored) : null;
 };
 
 const saveUser = (user) => {
     const normalizedEmail = normalizeEmail(user.email);
     const storedUser = {
-        ...user,
+        ...ensureUserCollections(user),
         email: normalizedEmail
     };
     users.set(normalizedEmail, storedUser);
@@ -73,17 +81,65 @@ const updateUserPreferences = (email, preferences = []) => {
     if (!user) {
         return null;
     }
-    const updatedUser = {
+    const updatedUser = ensureUserCollections({
         ...user,
         preferences
-    };
+    });
     users.set(normalized, updatedUser);
     persistUsers();
     return updatedUser;
 };
 
+const addArticleToCollection = (email, article, collectionKey) => {
+    const normalized = normalizeEmail(email);
+    const existingUser = users.get(normalized);
+    if (!existingUser || !article || !article.id) {
+        return null;
+    }
+
+    const user = ensureUserCollections(existingUser);
+
+    const snapshot = {
+        id: article.id,
+        title: article.title,
+        description: article.description,
+        url: article.url,
+        source: article.source,
+        publishedAt: article.publishedAt
+    };
+
+    const collection = Array.isArray(user[collectionKey]) ? [...user[collectionKey]] : [];
+    const existingIndex = collection.findIndex((entry) => entry.id === snapshot.id);
+    if (existingIndex !== -1) {
+        collection.splice(existingIndex, 1);
+    }
+    collection.unshift(snapshot);
+
+    const updatedUser = ensureUserCollections({
+        ...user,
+        [collectionKey]: collection
+    });
+    users.set(normalized, updatedUser);
+    persistUsers();
+    return updatedUser[collectionKey];
+};
+
+const getUserCollection = (email, collectionKey) => {
+    const user = findUserByEmail(email);
+    return user ? user[collectionKey] : [];
+};
+
+const addReadArticle = (email, article) => addArticleToCollection(email, article, 'readArticles');
+const addFavoriteArticle = (email, article) => addArticleToCollection(email, article, 'favoriteArticles');
+const getReadArticles = (email) => getUserCollection(email, 'readArticles');
+const getFavoriteArticles = (email) => getUserCollection(email, 'favoriteArticles');
+
 module.exports = {
     findUserByEmail,
     saveUser,
-    updateUserPreferences
+    updateUserPreferences,
+    addReadArticle,
+    addFavoriteArticle,
+    getReadArticles,
+    getFavoriteArticles
 };
