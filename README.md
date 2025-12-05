@@ -146,5 +146,3 @@ npm test
 2. Register/login to get a JWT
 3. Pass `Authorization: Bearer <token>` when requesting `/news`, `/preferences`, or `/news/:id/read`
 4. Inspect `/news` responses for article `id` values needed for read/favorite calls
-
-Let me know if you need Postman collections, sample bearer token usage, or CI pipeline setup guidance.
