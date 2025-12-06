@@ -16,6 +16,11 @@ const preferencesSchema = z.object({
     preferences: z.array(z.string().min(1, 'Preferences must be non-empty strings')).optional()
 });
 
+const searchKeywordSchema = z.string()
+    .min(1, 'Keyword is required')
+    .max(100, 'Keyword must be 100 characters or fewer')
+    .refine((s) => !/[<>\n\r\t]/.test(s), 'Keyword contains invalid control characters');
+
 const formatZodErrors = (error) => {
     if (!error || !error.errors) return [];
     return error.errors.map((entry) => ({
@@ -51,8 +56,18 @@ const validatePreferences = (payload) => {
     }
 };
 
+const validateSearchKeyword = (payload) => {
+    try {
+        const value = searchKeywordSchema.parse(payload);
+        return { success: true, value };
+    } catch (error) {
+        return { success: false, errors: formatZodErrors(error) };
+    }
+};
+
 module.exports = {
     validateRegistration,
     validateLogin,
     validatePreferences
+    , validateSearchKeyword
 };

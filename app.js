@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const authRoutes = require('./routes/authRoutes');
 const preferencesRoutes = require('./routes/preferencesRoutes');
 const newsRoutes = require('./routes/newsRoutes');
+const { startCacheRefresh, stopCacheRefresh, REFRESH_INTERVAL_MS } = require('./controllers/newsController');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,7 +29,19 @@ if (require.main === module) {
             return console.error('Server error', err);
         }
         console.log(`Server listening on port ${PORT}`);
+        startCacheRefresh(REFRESH_INTERVAL_MS);
     });
 }
+
+
+const shutdown = (signal) => {
+    stopCacheRefresh();
+    console.log(`Shutting down due to ${signal || 'exit'}`);
+    // Allow any other listeners to run; don't forcibly exit here
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('exit', () => shutdown('exit'));
 
 module.exports = app;

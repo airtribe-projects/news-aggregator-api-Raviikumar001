@@ -204,14 +204,18 @@ const getFavoriteNews = (req, res) => {
     return res.status(200).json({ favorites: items });
 };
 
+const { validateSearchKeyword } = require('../utils/validation');
+
 const searchNews = async (req, res) => {
     if (!NEWS_API_KEY) {
         return res.status(503).json({ error: 'NEWS_API_KEY is required to search articles' });
     }
 
-    const keyword = (req.params.keyword || '').trim();
-    if (!keyword) {
-        return res.status(400).json({ error: 'Keyword is required for searching' });
+    const keywordRaw = req.params.keyword || '';
+    const keyword = decodeURIComponent(String(keywordRaw)).trim();
+    const validation = validateSearchKeyword(keyword);
+    if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid keyword', details: validation.errors });
     }
 
     const { articles } = await ensureArticlesForPreferences(req.user.preferences);
@@ -247,11 +251,25 @@ const refreshAllCaches = async () => {
     }
 };
 
-if (NEWS_API_KEY) {
-    setInterval(() => {
+let refreshTimer = null;
+
+const startCacheRefresh = (intervalMs = REFRESH_INTERVAL_MS) => {
+    if (!NEWS_API_KEY) return;
+    if (process.env.NODE_ENV === 'test') return; 
+    if (refreshTimer) return; 
+    refreshTimer = setInterval(() => {
         refreshAllCaches().catch((error) => console.error('Periodic cache refresh failed', error));
-    }, REFRESH_INTERVAL_MS);
-}
+    }, intervalMs);
+    // Allow process to exit if this is the only thing left
+    if (typeof refreshTimer.unref === 'function') refreshTimer.unref();
+};
+
+const stopCacheRefresh = () => {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+};
 
 module.exports = {
     getNewsForUser,
@@ -259,5 +277,8 @@ module.exports = {
     markArticleFavorite,
     getReadNews,
     getFavoriteNews,
-    searchNews
+    searchNews,
+    startCacheRefresh,
+    stopCacheRefresh,
+    REFRESH_INTERVAL_MS
 };

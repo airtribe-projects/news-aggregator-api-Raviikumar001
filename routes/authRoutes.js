@@ -7,3 +7,4 @@ router.post(['/register', '/users/signup', '/users/register'], registerUser);
 router.post(['/login', '/users/login'], loginUser);
 
 module.exports = router;
+
