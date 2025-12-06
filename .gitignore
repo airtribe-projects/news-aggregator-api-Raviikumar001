@@ -1,2 +1,4 @@
 node_modules
 .tap
+data/users.json
+*.env

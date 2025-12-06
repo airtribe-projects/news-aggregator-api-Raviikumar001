@@ -79,6 +79,22 @@ tap.test('Check PUT /users/preferences', async (t) => {
     t.end();
 });
 
+tap.test('PUT /users/preferences normalization', async (t) => {
+    const response = await server.put('/users/preferences').set('Authorization', `Bearer ${token}`).send({
+        preferences: ['  Movies  ', 'MOVIES', '\n\t', 'sports', '123', 'COMICS']
+    });
+    t.equal(response.status, 200);
+    t.end();
+});
+
+tap.test('Check PUT /users/preferences normalization result', async (t) => {
+    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${token}`);
+    t.equal(response.status, 200);
+    // Should normalize: trim, lowercase, dedupe numbers & strings, remove invalid entries
+    t.same(response.body.preferences, ['movies', 'sports', '123', 'comics']);
+    t.end();
+});
+
 // News tests
 
 tap.test('GET /news', async (t) => {
@@ -91,6 +107,21 @@ tap.test('GET /news', async (t) => {
 tap.test('GET /news without token', async (t) => {
     const response = await server.get('/news');
     t.equal(response.status, 401);
+    t.end();
+});
+
+// Search tests
+tap.test('GET /news/search/:keyword', async (t) => {
+    const response = await server.get('/news/search/health').set('Authorization', `Bearer ${token}`);
+    t.equal(response.status, 200);
+    t.hasOwnProp(response.body, 'results');
+    t.end();
+});
+
+tap.test('GET /news/search/:keyword too long', async (t) => {
+    const longKeyword = 'a'.repeat(101);
+    const response = await server.get(`/news/search/${longKeyword}`).set('Authorization', `Bearer ${token}`);
+    t.equal(response.status, 400);
     t.end();
 });
 
