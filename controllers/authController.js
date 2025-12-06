@@ -51,7 +51,13 @@ const loginUser = async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
         const token = signToken({ email: user.email, name: user.name });
-        return res.status(200).json({ token });
+        const safeUser = {
+            id: user.email,
+            email: user.email,
+            name: user.name,
+            preferences: Array.isArray(user.preferences) ? user.preferences : []
+        };
+        return res.status(200).json({ token, user: safeUser });
     } catch (error) {
         console.error('Login failed', error);
         return res.status(500).json({ error: 'Unable to login right now' });

@@ -32,7 +32,9 @@ const attachArticleIds = (articles) =>
         id: article.id || createArticleId(article)
     }));
 
-const determineEndpoint = (preferences = []) => {
+const isISODate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+const determineEndpoint = (preferences = [], options = {}) => {
     const normalized = normalizePreferences(preferences);
     const normalizedLower = normalized.map((preference) => preference.toLowerCase());
     const headlineCategory = normalizedLower.find((pref) => TOP_HEADLINE_CATEGORIES.has(pref));
@@ -50,18 +52,41 @@ const determineEndpoint = (preferences = []) => {
     }
 
     const query = normalizedLower.length ? normalizedLower.join(' OR ') : 'breaking news';
-    const today = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
 
+    // Parse options: prefer explicit from/to; otherwise `days`; default to 7 days
+    let from = null;
+    let to = null;
+    if (isISODate(options.from) && isISODate(options.to)) {
+        from = options.from;
+        to = options.to;
+    } else if (isISODate(options.from) && !options.to) {
+        from = options.from;
+        to = todayStr;
+    } else if (Number(options.days) && Number(options.days) > 0) {
+        const days = Math.max(1, Number(options.days));
+        const d = new Date();
+        const fromDt = new Date(d.getTime() - days * 24 * 60 * 60 * 1000);
+        from = fromDt.toISOString().split('T')[0];
+        to = todayStr;
+    } else {
+        // Default to 7 days
+        const d = new Date();
+        const fromDt = new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000);
+        from = fromDt.toISOString().split('T')[0];
+        to = todayStr;
+    }
     return {
         endpoint: '/everything',
         params: {
             q: query,
-            from: today,
+            from,
+            to,
             sortBy: 'popularity',
             language: 'en',
             pageSize: 20
         },
-        cacheSuffix: `search:${normalizedLower.length ? normalizedLower.join('|') : 'default'}`
+        cacheSuffix: `search:${normalizedLower.length ? normalizedLower.join('|') : 'default'}:from:${from}:to:${to}`
     };
 };
 
@@ -86,8 +111,8 @@ const fetchNewsFromApi = async (endpoint, params) => {
     return Array.isArray(response.data.articles) ? response.data.articles : [];
 };
 
-const ensureArticlesForPreferences = async (preferences = []) => {
-    const { endpoint, params, cacheSuffix } = determineEndpoint(preferences);
+const ensureArticlesForPreferences = async (preferences = [], options = {}) => {
+    const { endpoint, params, cacheSuffix } = determineEndpoint(preferences, options);
     const cacheKey = buildCacheKey(endpoint, cacheSuffix);
     const cached = newsCache.get(cacheKey);
     const now = Date.now();
@@ -117,7 +142,12 @@ const getNewsForUser = async (req, res) => {
     }
 
     try {
-        const { articles } = await ensureArticlesForPreferences(req.user.preferences);
+        const options = {
+            from: req.query.from,
+            to: req.query.to,
+            days: req.query.days
+        };
+        const { articles } = await ensureArticlesForPreferences(req.user.preferences, options);
         return res.status(200).json({ news: articles });
     } catch (error) {
         console.error('News fetch failed', error);

@@ -66,7 +66,7 @@ PORT=3000
 
 | Method | Route | Notes |
 | --- | --- | --- |
-| GET | `/news` | Returns cached news tailored to preferences. Uses `/top-headlines` when a preference matches a NewsAPI category; otherwise `everything`. Cache refreshes every 5 minutes. The response includes articles with an internal `id` (base64 of the URL). |
+| GET | `/news` | Returns cached news tailored to preferences. Uses `/top-headlines` when a preference matches a NewsAPI category; otherwise `everything`. Cache refreshes every 5 minutes. The response includes articles with an internal `id` (base64 of the URL). Supports optional query params: `from` and `to` (YYYY-MM-DD), or `days=N` to indicate last N days; defaults to last 7 days when none are provided. |
 | POST | `/news/:id/read` | Marks article `id` as read. Updates persisted read list and returns `{ read: [...] }`. |
 | POST | `/news/:id/favorite` | Marks article `id` as favorite. Returns `{ favorites: [...] }`. |
 | GET | `/news/read` | Retrieves the authenticated user’s read articles. |
@@ -96,6 +96,16 @@ curl -s -X POST http://localhost:3000/login \
 ```bash
 curl -s http://localhost:3000/news \
   -H "Authorization: Bearer <token>"
+```
+
+3b. Query a specific date range (from/to) or days window
+
+```bash
+# Last 14 days
+curl -s "http://localhost:3000/news?days=14" -H "Authorization: Bearer <token>"
+
+# Specific date range (YYYY-MM-DD)
+curl -s "http://localhost:3000/news?from=2025-11-15&to=2025-11-22" -H "Authorization: Bearer <token>"
 ```
 
 4. Mark article read
