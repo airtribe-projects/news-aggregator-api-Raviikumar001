@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { validators } = require('./validation');
+const { emailValidator, nameValidator } = validators;
 
 const DATA_DIR = path.resolve(__dirname, '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -8,9 +10,13 @@ const normalizeEmail = (email) => (email ? email.trim().toLowerCase() : '');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
-const ensureDataDir = () => {
-    if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+const ensureDataDir = async () => {
+    try {
+        await fs.promises.mkdir(DATA_DIR, { recursive: true });
+    } catch (err) {
+        // If mkdir fails, we still want to log it; caller will handle errors
+        console.error('Unable to ensure data directory', err);
+        throw err;
     }
 };
 
@@ -20,9 +26,6 @@ const loadUsersFromDisk = () => {
     }
 
     try {
-        if (!fs.existsSync(USERS_FILE)) {
-            return {};
-        }
         const contents = fs.readFileSync(USERS_FILE, 'utf-8');
         const parsed = JSON.parse(contents);
         if (parsed && typeof parsed === 'object') {
@@ -30,6 +33,10 @@ const loadUsersFromDisk = () => {
         }
         return {};
     } catch (error) {
+        // If file does not exist, return an empty object; otherwise log error and return empty
+        if (error && error.code === 'ENOENT') {
+            return {};
+        }
         console.error('Unable to read user store', error);
         return {};
     }
@@ -37,16 +44,53 @@ const loadUsersFromDisk = () => {
 
 const users = new Map(Object.entries(loadUsersFromDisk()));
 
-const persistUsers = () => {
-    if (isTestEnvironment) {
-        return;
-    }
+// Debounced persist to avoid many quick writes to disk
+const PERSIST_DEBOUNCE_MS = Number(process.env.PERSIST_DEBOUNCE_MS) || 200;
+let persistTimer = null;
+const safeStringify = (obj) => {
     try {
-        ensureDataDir();
+        return JSON.stringify(obj, null, 2);
+    } catch (error) {
+        // Avoid noisy test logs when intentionally passing cyclic objects during tests
+        if (!isTestEnvironment) console.error('Unable to stringify users for persistence', error);
+        return null;
+    }
+};
+
+const flushPersist = async () => {
+    if (isTestEnvironment) return;
+    try {
+        await ensureDataDir();
         const payload = Object.fromEntries(users);
-        fs.writeFileSync(USERS_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+        const body = safeStringify(payload);
+        if (body === null) {
+            // skip writing if serialization failed
+            return;
+        }
+        await fs.promises.writeFile(USERS_FILE, body, 'utf-8');
     } catch (error) {
         console.error('Unable to persist users', error);
+    }
+};
+
+const schedulePersist = (debounceMs = PERSIST_DEBOUNCE_MS) => {
+    if (isTestEnvironment) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(async () => {
+        try {
+            await flushPersist();
+        } catch (err) {
+            console.error('Scheduled persist error', err);
+        }
+        persistTimer = null;
+    }, debounceMs);
+    if (typeof persistTimer.unref === 'function') persistTimer.unref();
+};
+
+const stopPersist = () => {
+    if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
     }
 };
 
@@ -65,13 +109,31 @@ const findUserByEmail = (email) => {
 };
 
 const saveUser = (user) => {
+    // Validate provided user object before saving
+    if (!user || typeof user !== 'object') {
+        throw new Error('Invalid user object');
+    }
+    try {
+        // Validate email format
+        emailValidator.parse(user.email);
+    } catch (err) {
+        throw new Error('Invalid email');
+    }
+    if (user.name !== undefined && user.name !== null) {
+        try {
+            nameValidator.parse(user.name);
+        } catch (err) {
+            throw new Error('Invalid name');
+        }
+    }
     const normalizedEmail = normalizeEmail(user.email);
     const storedUser = {
         ...ensureUserCollections(user),
         email: normalizedEmail
     };
-    users.set(normalizedEmail, storedUser);
-    persistUsers();
+        users.set(normalizedEmail, storedUser);
+        // schedule writing to disk (debounced)
+        schedulePersist();
     return storedUser;
 };
 
@@ -85,8 +147,9 @@ const updateUserPreferences = (email, preferences = []) => {
         ...user,
         preferences
     });
-    users.set(normalized, updatedUser);
-    persistUsers();
+        users.set(normalized, updatedUser);
+        // schedule writing to disk (debounced)
+        schedulePersist();
     return updatedUser;
 };
 
@@ -109,18 +172,16 @@ const addArticleToCollection = (email, article, collectionKey) => {
     };
 
     const collection = Array.isArray(user[collectionKey]) ? [...user[collectionKey]] : [];
-    const existingIndex = collection.findIndex((entry) => entry.id === snapshot.id);
-    if (existingIndex !== -1) {
-        collection.splice(existingIndex, 1);
-    }
-    collection.unshift(snapshot);
+
+    const filtered = collection.filter((entry) => entry.id !== snapshot.id);
+    const newCollection = [snapshot, ...filtered];
 
     const updatedUser = ensureUserCollections({
         ...user,
-        [collectionKey]: collection
+        [collectionKey]: newCollection
     });
-    users.set(normalized, updatedUser);
-    persistUsers();
+        users.set(normalized, updatedUser);
+        schedulePersist();
     return updatedUser[collectionKey];
 };
 
@@ -143,3 +204,9 @@ module.exports = {
     getReadArticles,
     getFavoriteArticles
 };
+module.exports._internal = {
+    flushPersist,
+    schedulePersist,
+    stopPersist
+};
+module.exports._internal.safeStringify = safeStringify;

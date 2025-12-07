@@ -6,6 +6,7 @@ const authRoutes = require('./routes/authRoutes');
 const preferencesRoutes = require('./routes/preferencesRoutes');
 const newsRoutes = require('./routes/newsRoutes');
 const { startCacheRefresh, stopCacheRefresh, REFRESH_INTERVAL_MS } = require('./controllers/newsController');
+const { _internal: { flushPersist, stopPersist } } = require('./utils/userStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,14 +35,24 @@ if (require.main === module) {
 }
 
 
-const shutdown = (signal) => {
+const shutdown = async (signal) => {
     stopCacheRefresh();
+    try {
+        await flushPersist();
+    } catch (err) {
+        // ignore; already logged
+    }
+    stopPersist();
     console.log(`Shutting down due to ${signal || 'exit'}`);
-    // Allow any other listeners to run; don't forcibly exit here
 };
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('exit', () => shutdown('exit'));
+process.on('SIGINT', () => { shutdown('SIGINT').catch(() => {}); });
+process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => {}); });
+// On normal exit, we can't reliably await async operations — just ensure timers are stopped.
+process.on('exit', () => {
+    stopCacheRefresh();
+    stopPersist();
+    console.log('Shutting down due to exit');
+});
 
 module.exports = app;

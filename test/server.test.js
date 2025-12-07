@@ -29,6 +29,57 @@ tap.test('POST /users/signup with missing email', async (t) => {
     t.end();
 });
 
+tap.test('POST /users/signup with invalid email', async (t) => {
+    const response = await server.post('/users/signup').send({
+        name: 'Invalid Email',
+        email: 'not-an-email',
+        password: 'Krypt()n8'
+    });
+    t.equal(response.status, 400);
+    t.end();
+});
+
+tap.test('POST /users/signup with short name', async (t) => {
+    const response = await server.post('/users/signup').send({
+        name: 'A',
+        email: 'shortname@example.com',
+        password: 'Krypt()n8',
+        preferences: ['movies']
+    });
+    t.equal(response.status, 400);
+    t.end();
+});
+
+tap.test('POST /users/signup with control chars in name', async (t) => {
+    const response = await server.post('/users/signup').send({
+        name: '<script>',
+        email: 'controlchars@example.com',
+        password: 'Krypt()n8'
+    });
+    t.equal(response.status, 400);
+    t.end();
+});
+
+tap.test('POST /users/signup name trimming', async (t) => {
+    const response = await server.post('/users/signup').send({
+        name: '  Lucy  ',
+        email: 'lucy@example.com',
+        password: 'Krypt()n8'
+    });
+    t.equal(response.status, 200);
+    t.end();
+});
+
+tap.test('_internal.safeStringify handles cyclic objects', async (t) => {
+    const { _internal } = require('../utils/userStore');
+    const cyclic = { a: 1 };
+    // create cycle
+    cyclic.self = cyclic;
+    const result = _internal.safeStringify(cyclic);
+    t.equal(result, null);
+    t.end();
+});
+
 tap.test('POST /users/login', async (t) => { 
     const response = await server.post('/users/login').send({
         email: mockUser.email,
@@ -46,6 +97,15 @@ tap.test('POST /users/login with wrong password', async (t) => {
         password: 'wrongpassword'
     });
     t.equal(response.status, 401);
+    t.end();
+});
+
+tap.test('POST /users/login with short password (validation)', async (t) => {
+    const response = await server.post('/users/login').send({
+        email: mockUser.email,
+        password: 'abc'
+    });
+    t.equal(response.status, 400);
     t.end();
 });
 

@@ -2,8 +2,10 @@ const MAX_PREF_LENGTH = 100;
 const MAX_PREF_COUNT = 50;
 const containsControl = (s) => /[<>\n\r\t]/.test(s);
 
-const normalizePreferences = (preferences) => {
+const normalizePreferences = (preferences = []) => {
+
     if (!Array.isArray(preferences)) return [];
+    if (preferences.length === 0) return [];
 
     const cleaned = preferences
         .filter((item) => item !== null && item !== undefined)
