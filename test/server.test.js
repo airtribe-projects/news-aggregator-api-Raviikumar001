@@ -91,6 +91,46 @@ tap.test('POST /users/login', async (t) => {
     t.end();
 });
 
+tap.test('GET /news handles bearer header with multiple spaces', async (t) => {
+        // Insert multiple spaces between Bearer and token
+        const res = await server
+            .get('/news')
+            .set('Authorization', `Bearer    ${token}`)
+            .expect(200);
+        t.ok(Array.isArray(res.body.news), 'News array present');
+        t.end();
+});
+
+tap.test('GET /news handles leading/trailing whitespace', async (t) => {
+        // Surround header with additional whitespace
+        const res = await server
+            .get('/news')
+            .set('Authorization', `   Bearer ${token}   `)
+            .expect(200);
+        t.ok(Array.isArray(res.body.news), 'News array present');
+        t.end();
+});
+
+tap.test('GET /news rejects malformed Authorization header (no space)', async (t) => {
+        const res = await server
+            .get('/news')
+            .set('Authorization', `Bearer${token}`)
+            .expect(401);
+        t.same(res.body, { error: 'Authorization header missing or malformed' });
+        t.end();
+});
+
+tap.test('GET /news rejects missing token after bearer', async (t) => {
+        const res = await server
+            .get('/news')
+            .set('Authorization', 'Bearer    ')
+            .expect(401);
+        // HTTP frameworks often trim header values; this may appear as bare 'Bearer',
+        // so either 'Token missing' (if token whitespace preserved) or 'Authorization header missing or malformed'
+        t.ok(res.body.error === 'Token missing' || res.body.error === 'Authorization header missing or malformed');
+        t.end();
+});
+
 tap.test('POST /users/login with wrong password', async (t) => {
     const response = await server.post('/users/login').send({
         email: mockUser.email,
@@ -122,6 +162,48 @@ tap.test('GET /users/preferences', async (t) => {
 tap.test('GET /users/preferences without token', async (t) => {
     const response = await server.get('/users/preferences');
     t.equal(response.status, 401);
+    t.end();
+});
+
+tap.test('GET /users/preferences with expired token', async (t) => {
+    const jwt = require('jsonwebtoken');
+    const secret = process.env.JWT_SECRET || 'news-aggregator-secret';
+    // sign token that expires almost immediately
+    const expiredToken = jwt.sign({ email: mockUser.email, name: mockUser.name }, secret, { expiresIn: '1ms' });
+    // wait so token expires
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${expiredToken}`);
+    t.equal(response.status, 401);
+    t.equal(response.body.error, 'Token expired');
+    t.end();
+});
+
+tap.test('GET /users/preferences with token for unknown user', async (t) => {
+    const jwt = require('jsonwebtoken');
+    const secret = process.env.JWT_SECRET || 'news-aggregator-secret';
+    const ghostToken = jwt.sign({ email: 'ghost@example.com', name: 'Ghost' }, secret, { expiresIn: '1h' });
+    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${ghostToken}`);
+    t.equal(response.status, 401);
+    t.equal(response.body.error, 'User not found for token');
+    t.end();
+});
+
+tap.test('Default JWT_EXPIRES_IN from env used on signToken', async (t) => {
+    // Temporarily set env var and re-require the jwtService to pick it up
+    const prev = process.env.JWT_EXPIRES_IN;
+    process.env.JWT_EXPIRES_IN = '1ms';
+    const jwtServicePath = require.resolve('../utils/jwtService');
+    delete require.cache[jwtServicePath];
+    const { signToken } = require('../utils/jwtService');
+    const token = signToken({ email: mockUser.email, name: mockUser.name });
+    // Give it a moment to expire
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${token}`);
+    t.equal(response.status, 401);
+    t.equal(response.body.error, 'Token expired');
+    // Restore env and clear module cache
+    process.env.JWT_EXPIRES_IN = prev;
+    delete require.cache[jwtServicePath];
     t.end();
 });
 
