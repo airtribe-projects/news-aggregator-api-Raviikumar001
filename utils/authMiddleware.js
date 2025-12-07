@@ -20,6 +20,20 @@ const authenticate = (req, res, next) => {
         const payload = verifyToken(token);
         const user = findUserByEmail(payload.email);
         if (!user) {
+            // Log masked email and request context for debugging without exposing PII
+            const maskEmail = (email = '') => {
+                if (!email || typeof email !== 'string') return '';
+                const atIndex = email.indexOf('@');
+                if (atIndex <= 1) return '***@' + email.slice(atIndex + 1);
+                const local = email.slice(0, atIndex);
+                const domain = email.slice(atIndex + 1);
+                const first = local[0];
+                const last = local.length > 1 ? local[local.length - 1] : '';
+                const maskedLocal = local.length <= 2 ? first + '*' : `${first}${'*'.repeat(Math.max(1, local.length - 2))}${last}`;
+                return `${maskedLocal}@${domain}`;
+            };
+            const masked = maskEmail(payload.email);
+            console.warn(`authMiddleware: token validated but user not found - email: ${masked}, ip: ${req.ip || 'unknown'}`);
             return res.status(401).json({ error: 'User not found for token' });
         }
         req.user = user;

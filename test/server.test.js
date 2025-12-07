@@ -188,6 +188,16 @@ tap.test('GET /users/preferences with token for unknown user', async (t) => {
     t.end();
 });
 
+tap.test('PUT /users/preferences with token for unknown user should return 401', async (t) => {
+    const jwt = require('jsonwebtoken');
+    const secret = process.env.JWT_SECRET || 'news-aggregator-secret';
+    const ghostToken = jwt.sign({ email: 'ghost2@example.com', name: 'Ghost' }, secret, { expiresIn: '1h' });
+    const response = await server.put('/users/preferences').set('Authorization', `Bearer ${ghostToken}`).send({ preferences: ['movies'] });
+    t.equal(response.status, 401);
+    t.equal(response.body.error, 'User not found for token');
+    t.end();
+});
+
 tap.test('Default JWT_EXPIRES_IN from env used on signToken', async (t) => {
     // Temporarily set env var and re-require the jwtService to pick it up
     const prev = process.env.JWT_EXPIRES_IN;

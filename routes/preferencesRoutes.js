@@ -19,6 +19,21 @@ const handlePutPreferences = (req, res) => {
     const normalized = normalizePreferences(validation.value.preferences || []);
     const updated = updateUserPreferences(req.user.email, normalized);
     if (!updated) {
+        // Log masked email and request context to aid debugging without exposing PII
+        const maskEmail = (email = '') => {
+            if (!email || typeof email !== 'string') return '';
+            const atIndex = email.indexOf('@');
+            if (atIndex <= 1) return '***@' + email.slice(atIndex + 1);
+            const local = email.slice(0, atIndex);
+            const domain = email.slice(atIndex + 1);
+            const first = local[0];
+            const last = local.length > 1 ? local[local.length - 1] : '';
+            const maskedLocal = local.length <= 2 ? first + '*' : `${first}${'*'.repeat(Math.max(1, local.length - 2))}${last}`;
+            return `${maskedLocal}@${domain}`;
+        };
+
+        const masked = maskEmail(req.user.email);
+        console.warn(`preferencesRoutes: Failed to update preferences for user not found - email: ${masked}, ip: ${req.ip || 'unknown'}`);
         return res.status(404).json({ error: 'User not found' });
     }
     req.user.preferences = updated.preferences;
